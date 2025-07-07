@@ -1,0 +1,34 @@
+# Core data processing
+pandas>=1.3.5
+numpy>=1.21.0
+
+# Compression and file handling
+python-snappy>=0.6.1
+pyarrow>=7.0.0
+
+# Validation and schema enforcement
+jsonschema>=4.4.0
+email-validator>=1.1.3
+
+# Kafka streaming
+confluent-kafka>=1.8.2
+kafka-python>=2.0.2
+
+# Monitoring and metrics
+prometheus-client>=0.14.1
+requests>=2.27.1
+
+# Logging and configuration
+python-json-logger>=2.0.4
+pyyaml>=6.0
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=3.0.0
+flake8>=4.0.1
+black>=22.1.0
+isort>=5.10.1
+mypy>=0.931
+
+# CI/CD utilities
+docker>=5.0.3

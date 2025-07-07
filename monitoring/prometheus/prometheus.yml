@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+- job_name: 'data-pipeline-etl'
+  static_configs:
+  - targets: [ 'data-pipeline-etl-new:8002' ]
+- job_name: 'pushgateway'
+  static_configs:
+  - targets: [ 'pushgateway:9091' ]

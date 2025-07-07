@@ -1,0 +1,105 @@
+
+networks:
+  monitoring-network-etl:
+    driver: bridge
+services:
+  
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - monitoring-network-etl
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    networks:
+      - monitoring-network-etl
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    
+  data-pipeline-etl-new:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data-pipeline-etl-new
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - .:/app
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - PROMETHEUS_PUSHGATEWAY=pushgateway:9091
+      - KAFKA_GROUP_ID=data-pipeline-etl-new
+    depends_on:
+      - kafka
+      - prometheus
+      - pushgateway
+    ports:
+      - "8002:8002"  # host:container
+    networks:
+      - monitoring-network-etl
+    command: >
+      sh -c "python src/pipeline.py --start-date 2020-01-24 --end-date 2024-01-25 --metrics-port 8002 && tail -f /dev/null"
+
+
+  pushgateway:
+    image: prom/pushgateway:v1.4.3
+    container_name: pushgateway 
+    ports:
+      - "9091:9091"
+    networks:
+      - monitoring-network-etl
+
+  prometheus:
+    image: prom/prometheus:v2.35.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - monitoring-network-etl
+    depends_on:
+      - pushgateway
+
+  grafana:
+    image: grafana/grafana:8.5.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - monitoring-network-etl
+    depends_on:
+      - prometheus
+
+
+  
+  

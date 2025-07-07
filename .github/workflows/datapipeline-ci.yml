@@ -1,0 +1,159 @@
+name: ETL Pipeline CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/data-pipeline
+  DISABLE_METRICS_PUSH: '1'
+
+jobs:
+  data-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8
+
+    - name: Lint code
+      run: flake8 src tests
+
+    - name: Run unit tests
+      run: |
+        pytest --cov=src tests/unit/ --junitxml=test-results/junit.xml
+
+    - name: Generate coverage report
+      run: |
+        pytest --cov=src --cov-report=xml --cov-report=html tests/unit/
+
+    - name: Upload test coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-coverage
+        path: htmlcov/
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: test-results/
+
+    - name: Stop any running containers
+      run: docker compose -f docker-compose-ci.yml down --volumes --remove-orphans
+
+    - name: Start Docker services
+      run: docker compose -f docker-compose-ci.yml up -d
+
+    - name: Wait for Kafka to be ready
+      run: |
+        for i in {1..30}; do
+          docker compose exec kafka bash -c "kafka-topics --bootstrap-server localhost:29092 --list" && break
+          echo "Waiting for Kafka..."
+          sleep 5
+        done
+
+
+    - name: Wait for ETL service to start
+      run: |
+        echo "⏳ Waiting for data-pipeline-etl-ci to be running..."
+        for i in {1..30}; do
+          state=$(docker inspect -f '{{.State.Running}}' data-pipeline-etl-ci || echo "false")
+          if [ "$state" == "true" ]; then
+            echo "✅ ETL container is running"
+            break
+          fi
+          sleep 5
+        done
+
+    - name: Verify test data exists
+      run: |
+        if [ ! -d "data/input" ]; then
+          echo "Test data directory data/input does not exist"
+          exit 1
+        fi
+        echo "Using existing test data from data/input"
+        find data/input -type f -name "*.json.gz" | sort
+
+    - name: Process test data
+      run: |
+        TEST_DATES=$(find data/input -type d -name "date=*" | sed 's/.*date=//g' | sort)
+        for date in $TEST_DATES; do
+          echo "Running pipeline for date: $date"
+          docker compose -f docker-compose-ci.yml exec -T data-pipeline-etl-ci \
+            env DISABLE_METRICS_PUSH=1 python -m src.pipeline --start-date $date --end-date $date --ci-mode
+
+          OUTPUT_FILES=$(find data/output -type f -name "*.json.gz" | wc -l)
+          if [ "$OUTPUT_FILES" -gt 0 ]; then
+            echo "Pipeline successful: $OUTPUT_FILES output files created"
+          else
+            echo "Pipeline failed: no output files created"
+            exit 1
+          fi
+        done
+
+    - name: Create Kafka topics
+      run: |
+        echo "Creating Kafka topics..."
+        docker compose exec -T kafka kafka-topics --create --if-not-exists --topic customers --partitions 1 --replication-factor 1 --bootstrap-server kafka:29092
+        docker compose exec -T kafka kafka-topics --create --if-not-exists --topic products --partitions 1 --replication-factor 1 --bootstrap-server kafka:29092
+        docker compose exec -T kafka kafka-topics --create --if-not-exists --topic transactions --partitions 1 --replication-factor 1 --bootstrap-server kafka:29092
+        docker compose exec -T kafka kafka-topics --create --if-not-exists --topic erasure-requests --partitions 1 --replication-factor 1 --bootstrap-server kafka:29092
+
+    # - name: Load Kafka test data
+    #   run: |
+    #     docker compose -f docker-compose-ci.yml exec data-pipeline-etl-ci bash -c "ls /app/src/"
+    - name: Produce test data to Kafka
+      run: |
+        docker compose -f docker-compose-ci.yml exec -T data-pipeline-etl-ci \
+        python src/streaming/load_test_data_to_kafka.py
+
+
+    - name: Run Kafka producer
+      run: bash run_kafka_producer_ci.sh
+
+    - name: Run Kafka consumer
+      run: bash run_kafka_consumer_ci.sh
+
+    - name: Upload ETL Output
+      uses: actions/upload-artifact@v4
+      with:
+        name: processed-data
+        path: data/output/
+
+    - name: Upload Logs
+      uses: actions/upload-artifact@v4
+      with:
+        name: etl-logs
+        path: logs/
+
+    - name: Stop Docker Compose services
+      if: always()
+      run: docker compose -f docker-compose-ci.yml down --volumes --remove-orphans

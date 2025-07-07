@@ -1,0 +1,132 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+env/
+venv*/
+ENV/
+env.bak/
+venv.bak/
+flask_compat_env/
+
+# Build and distribution
+build/
+dist/
+downloads/
+lib/
+lib64/
+var/
+installed.cfg
+pyvenv.cfg
+
+
+# Testing and coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+coverage.xml
+.tox/
+nosetests.xml
+*.cover
+
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Project-specific outputs
+data/output/
+data/quarantine/
+data/logs/
+data/
+logs/
+metrics/
+
+*.log
+
+# Secrets and credentials
+.env
+.env.*
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Documentation build
+docs/_build/
+docs/api/
+
+# Profiling data
+prof/
+*.prof
+
+# Generated files
+*.generated.*
+generated/
+
+# Backup files
+*.bak
+*.backup
+*~# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environment
+venv/
+venv1/
+.venv/
+env/
+ENV/
+
+# Testing and coverage
+.coverage
+htmlcov/
+coverage/
+coverage.xml
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific data directories
+testdata/output/
+testdata/quarantine/
+testdata/logs/
+*.log
+
+# Docker
+.docker/
+
+# Metrics and monitoring
+prometheus_data/
+grafana_data/
+
+# Temporary files
+tmp/
+temp/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Secrets
+.env
+*.pem
+*.key
